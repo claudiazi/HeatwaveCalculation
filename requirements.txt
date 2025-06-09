@@ -1,0 +1,16 @@
+# Core dependencies
+pyspark>=3.0.0
+pandas>=1.0.0
+requests>=2.25.0
+xarray>=0.20.0
+netCDF4>=1.5.0
+
+# API dependencies
+flask>=2.0.0
+
+# Airflow dependencies
+apache-airflow>=2.5.0
+apache-airflow-providers-http>=2.0.0
+
+# Optional dependencies for development
+pytest>=6.0.0

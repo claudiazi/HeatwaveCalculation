@@ -1,0 +1,38 @@
+version: '3'
+
+services:
+  # Service for calculating heatwaves and coldwaves
+  calculator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ./data:/app/data
+      - ./:/app/output
+    command: ["--mode", "both"]
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - weather-network
+
+  # Service for the REST API
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./:/app
+    depends_on:
+      - calculator
+    environment:
+      - FLASK_APP=api.py
+      - FLASK_ENV=development
+      - PYTHONUNBUFFERED=1
+    networks:
+      - weather-network
+
+networks:
+  weather-network:
+    driver: bridge

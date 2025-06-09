@@ -1,0 +1,19 @@
+# Use the official Python image as base
+FROM python:3.9-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install dependencies
+RUN pip install flask pandas
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV FLASK_APP=api.py
+ENV FLASK_ENV=development
+
+# Expose port for the API
+EXPOSE 5000
+
+# Command to run the API
+CMD ["flask", "run", "--host=0.0.0.0"]
