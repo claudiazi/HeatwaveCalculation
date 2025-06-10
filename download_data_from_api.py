@@ -98,8 +98,8 @@ def get_max_worker_count(filesizes):
 
 async def main():
     api_key = "eyJvcmciOiI1ZTU1NGUxOTI3NGE5NjAwMDEyYTNlYjEiLCJpZCI6ImE1OGI5NGZmMDY5NDRhZDNhZjFkMDBmNDBmNTQyNjBkIiwiaCI6Im11cm11cjEyOCJ9"
-    dataset_name = "etmaalgegevensKNMIstations"
-    dataset_version = "1"
+    dataset_name = "daily-in-situ-meteorological-observations"
+    dataset_version = "1.0"
     base_url = "https://api.dataplatform.knmi.nl/open-data/v1"
     # When set to True, if a file with the same name exists the output is written over the file.
     # To prevent unnecessary bandwidth usage, leave it set to False.
@@ -239,5 +239,9 @@ def read_nc_file(file_path: Union[str, Path]) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
+    # import glob
+    # nc_files = glob.glob(os.path.join("data", "**/*.nc"), recursive=True)
+    #
+    # df = read_nc_file(nc_files[0])
     df = asyncio.run(main())
-    print(1)
+    # print(1)

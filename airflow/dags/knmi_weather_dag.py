@@ -5,22 +5,21 @@ This DAG downloads new data from the KNMI API and runs the heatwave/coldwave cal
 It is scheduled to run daily to ensure the latest weather data is processed.
 """
 
-from datetime import datetime, timedelta
-from airflow import DAG
-from airflow.providers.standard.operators.python import PythonOperator
-from airflow.providers.standard.operators.bash import BashOperator
 import os
 import sys
-import urllib.request
 import tarfile
 import tempfile
-import requests
-import json
-import logging
-import asyncio
+import urllib.request
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any
+
+import requests
+from airflow.providers.standard.operators.bash import BashOperator
+from airflow.providers.standard.operators.python import PythonOperator
+
+from airflow import DAG
 
 # Add the parent directory to the path so we can import from main.py
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -57,6 +56,10 @@ def download_knmi_data(**kwargs):
     """
     # Create the data directory if it doesn't exist
     os.makedirs(data_dir, exist_ok=True)
+
+    # Set no_proxy environment variable to avoid segmentation fault on macOS
+    # This is a workaround for a known issue with macOS and network proxy configuration
+    os.environ['no_proxy'] = '*'
 
     # Get the current date
     current_date = datetime.now()
@@ -233,6 +236,10 @@ def get_knmi_etmaal_data(**kwargs):
     # Create the data directory if it doesn't exist
     os.makedirs(data_dir, exist_ok=True)
 
+    # Set no_proxy environment variable to avoid segmentation fault on macOS
+    # This is a workaround for a known issue with macOS and network proxy configuration
+    os.environ['no_proxy'] = '*'
+
     # API configuration
     api_key = "eyJvcmciOiI1ZTU1NGUxOTI3NGE5NjAwMDEyYTNlYjEiLCJpZCI6ImE1OGI5NGZmMDY5NDRhZDNhZjFkMDBmNDBmNTQyNjBkIiwiaCI6Im11cm11cjEyOCJ9"
     dataset_name = "etmaalgegevensKNMIstations"
@@ -333,16 +340,16 @@ download_etmaal_data_task = PythonOperator(
 # Task to run the heatwave calculation
 calculate_heatwaves_task = BashOperator(
     task_id='calculate_heatwaves',
-    bash_command='cd {{ params.project_dir }} && spark-submit main.py --mode heatwaves',
-    params={'project_dir': os.path.dirname(os.path.dirname(os.path.abspath(__file__)))},
+    bash_command='cd {{ params.project_dir }} && /Users/claudia.yuan/PycharmProjects/HeatwaveCalculation/venv/bin/python -c "import os, sys, glob; os.makedirs(\'data\', exist_ok=True); csv_files = glob.glob(\'data/**/*.csv\', recursive=True); print(f\'Found {len(csv_files)} CSV files\'); sys.exit(0)" && /Users/claudia.yuan/PycharmProjects/HeatwaveCalculation/venv/bin/spark-submit main.py --mode heatwaves',
+    params={'project_dir': os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))},
     dag=dag,
 )
 
 # Task to run the coldwave calculation
 calculate_coldwaves_task = BashOperator(
     task_id='calculate_coldwaves',
-    bash_command='cd {{ params.project_dir }} && spark-submit main.py --mode coldwaves',
-    params={'project_dir': os.path.dirname(os.path.dirname(os.path.abspath(__file__)))},
+    bash_command='cd {{ params.project_dir }} && /Users/claudia.yuan/PycharmProjects/HeatwaveCalculation/venv/bin/python -c "import os, sys, glob; os.makedirs(\'data\', exist_ok=True); csv_files = glob.glob(\'data/**/*.csv\', recursive=True); print(f\'Found {len(csv_files)} CSV files\'); sys.exit(0)" && /Users/claudia.yuan/PycharmProjects/HeatwaveCalculation/venv/bin/spark-submit main.py --mode coldwaves',
+    params={'project_dir': os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))},
     dag=dag,
 )
 
