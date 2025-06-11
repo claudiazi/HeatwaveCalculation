@@ -23,7 +23,7 @@ def ensure_data_exists():
     """
     if not os.path.exists(HEATWAVES_CSV) or not os.path.exists(COLDWAVES_CSV):
         print("Calculating heatwaves and coldwaves...")
-        subprocess.run(["spark-submit", "main.py", "--mode", "both"], check=True)
+        subprocess.run(["python", "main.py", "--mode", "both"], check=True)
 
 @app.route('/api/heatwaves', methods=['GET'])
 def get_heatwaves():

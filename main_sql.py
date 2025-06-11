@@ -260,25 +260,24 @@ def calculate_heatwaves(df):
     """)
 
     # Use SQL to identify groups of consecutive hot days
-    # First, create a view with the lag function to detect changes
+    # Create a view with row numbers and date calculations for proper consecutive grouping
     spark.sql("""
-        CREATE OR REPLACE TEMPORARY VIEW weather_with_changes AS
+        CREATE OR REPLACE TEMPORARY VIEW weather_with_row_nums AS
         SELECT 
             *,
-            CASE 
-                WHEN LAG(is_hot, 1) OVER (PARTITION BY YEAR(DATE) ORDER BY DATE) != is_hot THEN 1 
-                ELSE 0 
-            END AS hot_day_change
+            ROW_NUMBER() OVER (ORDER BY DATE) AS row_num,
+            DATEDIFF(DATE, '1970-01-01') AS date_num
         FROM weather_with_indicators
+        ORDER BY DATE
     """)
 
-    # Create a view with group IDs for consecutive hot days
+    # Create a view with proper group IDs based on date difference
     spark.sql("""
         CREATE OR REPLACE TEMPORARY VIEW weather_with_groups AS
         SELECT 
             *,
-            SUM(hot_day_change) OVER (PARTITION BY YEAR(DATE) ORDER BY DATE) AS hot_group_id
-        FROM weather_with_changes
+            (date_num - row_num) AS date_group
+        FROM weather_with_row_nums
     """)
 
     # Filter for hot days only and group by hot_group_id
@@ -288,25 +287,25 @@ def calculate_heatwaves(df):
         WHERE is_hot = 1
     """)
 
-    # Group by hot_group_id to analyze each potential heatwave
+    # Group by date_group to analyze each potential heatwave
     spark.sql("""
         CREATE OR REPLACE TEMPORARY VIEW grouped_hot_days AS
         SELECT 
-            hot_group_id,
+            date_group,
             MIN(DATE) AS start_date,
             MAX(DATE) AS end_date,
             COUNT(DATE) AS duration,
             SUM(is_tropical) AS tropical_days,
             MAX(TX_DRYB_10) AS max_temperature
         FROM hot_days
-        GROUP BY hot_group_id
+        GROUP BY date_group
     """)
 
     # Filter for periods that meet the heatwave criteria
     spark.sql("""
         CREATE OR REPLACE TEMPORARY VIEW heatwaves AS
         SELECT 
-            hot_group_id,
+            date_group,
             start_date,
             end_date,
             duration,
@@ -358,26 +357,25 @@ def calculate_coldwaves(df):
         FROM cold_weather_data
     """)
 
-    # Use SQL to identify groups of consecutive cold days
-    # First, create a view with the lag function to detect changes
+    # Use SQL to identify groups of consecutive cold days using same logic as heatwaves
+    # Create a view with row numbers and date calculations for proper consecutive grouping
     spark.sql("""
-        CREATE OR REPLACE TEMPORARY VIEW cold_weather_with_changes AS
+        CREATE OR REPLACE TEMPORARY VIEW cold_weather_with_row_nums AS
         SELECT 
             *,
-            CASE 
-                WHEN LAG(is_cold, 1) OVER (PARTITION BY YEAR(DATE) ORDER BY DATE) != is_cold THEN 1 
-                ELSE 0 
-            END AS cold_day_change
+            ROW_NUMBER() OVER (ORDER BY DATE) AS row_num,
+            DATEDIFF(DATE, '1970-01-01') AS date_num
         FROM cold_weather_with_indicators
+        ORDER BY DATE
     """)
 
-    # Create a view with group IDs for consecutive cold days
+    # Create a view with proper group IDs based on date difference
     spark.sql("""
         CREATE OR REPLACE TEMPORARY VIEW cold_weather_with_groups AS
         SELECT 
             *,
-            SUM(cold_day_change) OVER (PARTITION BY YEAR(DATE) ORDER BY DATE) AS cold_group_id
-        FROM cold_weather_with_changes
+            (date_num - row_num) AS date_group
+        FROM cold_weather_with_row_nums
     """)
 
     # Filter for cold days only and group by cold_group_id
@@ -387,25 +385,25 @@ def calculate_coldwaves(df):
         WHERE is_cold = 1
     """)
 
-    # Group by cold_group_id to analyze each potential coldwave
+    # Group by date_group to analyze each potential coldwave
     spark.sql("""
         CREATE OR REPLACE TEMPORARY VIEW grouped_cold_days AS
         SELECT 
-            cold_group_id,
+            date_group,
             MIN(DATE) AS start_date,
             MAX(DATE) AS end_date,
             COUNT(DATE) AS duration,
             SUM(is_high_frost) AS high_frost_days,
             MIN(TN_DRYB_10) AS min_temperature
         FROM cold_days
-        GROUP BY cold_group_id
+        GROUP BY date_group
     """)
 
     # Filter for periods that meet the coldwave criteria
     spark.sql("""
         CREATE OR REPLACE TEMPORARY VIEW coldwaves AS
         SELECT 
-            cold_group_id,
+            date_group,
             start_date,
             end_date,
             duration,

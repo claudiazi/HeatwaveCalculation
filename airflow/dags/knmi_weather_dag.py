@@ -1,8 +1,8 @@
 """
 Airflow DAG for KNMI Weather Data Processing
 
-This DAG downloads new data from the KNMI API and runs the heatwave/coldwave calculation application.
-It is scheduled to run daily to ensure the latest weather data is processed.
+This DAG processes weather data from local extracted_data folder to calculate heatwaves and coldwaves.
+The API functions are kept for reference but tasks only use local data.
 """
 
 import os
@@ -21,7 +21,7 @@ from airflow.providers.standard.operators.python import PythonOperator
 
 from airflow import DAG
 
-# Add the parent directory to the path so we can import from main.py
+# Add the parent directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Default arguments for the DAG
@@ -39,13 +39,14 @@ default_args = {
 dag = DAG(
     'knmi_weather_processing',
     default_args=default_args,
-    description='Download KNMI weather data and calculate heatwaves and coldwaves',
+    description='Process local KNMI weather data and calculate heatwaves and coldwaves',
     schedule=timedelta(days=1),  # Run daily
     catchup=False,
 )
 
-# Define the data directory
-data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+# Define directories
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+extracted_data_dir = os.path.join(project_root, 'airflow', 'extracted_data')
 
 def download_knmi_data(**kwargs):
     """
@@ -55,7 +56,7 @@ def download_knmi_data(**kwargs):
     It saves the data to the data directory.
     """
     # Create the data directory if it doesn't exist
-    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(extracted_data_dir, exist_ok=True)
 
     # Set no_proxy environment variable to avoid segmentation fault on macOS
     # This is a workaround for a known issue with macOS and network proxy configuration
@@ -74,14 +75,14 @@ def download_knmi_data(**kwargs):
     with tempfile.NamedTemporaryFile(delete=False) as temp_file:
         urllib.request.urlretrieve(knmi_api_url, temp_file.name)
 
-        print(f"Extracting data to {data_dir}...")
+        print(f"Extracting data to {extracted_data_dir}...")
         with tarfile.open(temp_file.name) as tar:
-            tar.extractall(path=data_dir)
+            tar.extractall(path=extracted_data_dir)
 
     os.unlink(temp_file.name)
 
     # Return the path to the data directory
-    return data_dir
+    return extracted_data_dir
 
 def download_dataset_file(
     session: requests.Session,
@@ -234,7 +235,7 @@ def get_knmi_etmaal_data(**kwargs):
     API endpoint: https://api.dataplatform.knmi.nl/open-data/v1/datasets/etmaalgegevensKNMIstations/versions/1/files
     """
     # Create the data directory if it doesn't exist
-    os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(extracted_data_dir, exist_ok=True)
 
     # Set no_proxy environment variable to avoid segmentation fault on macOS
     # This is a workaround for a known issue with macOS and network proxy configuration
@@ -297,7 +298,7 @@ def get_knmi_etmaal_data(**kwargs):
                     dataset_name,
                     dataset_version,
                     dataset_filename,
-                    data_dir,
+                    extracted_data_dir,
                     overwrite,
                 )
                 futures.append(future)
@@ -321,40 +322,70 @@ def get_knmi_etmaal_data(**kwargs):
         raise
 
     # Return the path to the data directory
-    return data_dir
+    return extracted_data_dir
 
-# Define the tasks
-download_data_task = PythonOperator(
-    task_id='download_knmi_data',
-    python_callable=download_knmi_data,
+# ============================================================================
+# TASKS - Only process local data from extracted_data folder
+# ============================================================================
+
+def check_data_availability(**kwargs):
+    """
+    Check if data is available in the extracted_data directory.
+    """
+    import glob
+    
+    # Check if extracted_data directory exists and has files
+    if not os.path.exists(extracted_data_dir):
+        print(f"Warning: {extracted_data_dir} does not exist")
+        return False
+    
+    # Look for data files
+    all_files = glob.glob(os.path.join(extracted_data_dir, "**/*"), recursive=True)
+    data_files = [f for f in all_files if os.path.isfile(f)]
+    
+    print(f"Found {len(data_files)} files in {extracted_data_dir}")
+    
+    if not data_files:
+        print("No data files found in extracted_data directory")
+        return False
+    
+    # Print some file info for debugging
+    for i, file_path in enumerate(data_files[:5]):  # Show first 5 files
+        file_size = os.path.getsize(file_path)
+        print(f"  {i+1}. {os.path.basename(file_path)} ({file_size} bytes)")
+    
+    if len(data_files) > 5:
+        print(f"  ... and {len(data_files) - 5} more files")
+    
+    return True
+
+# Task to check data availability
+check_data_task = PythonOperator(
+    task_id='check_data_availability',
+    python_callable=check_data_availability,
     dag=dag,
 )
 
-# Task to download data from KNMI etmaalgegevensKNMIstations dataset
-download_etmaal_data_task = PythonOperator(
-    task_id='download_knmi_etmaal_data',
-    python_callable=get_knmi_etmaal_data,
-    dag=dag,
-)
-
-# Task to run the heatwave calculation
+# Task to run heatwave calculation using local data
 calculate_heatwaves_task = BashOperator(
     task_id='calculate_heatwaves',
-    bash_command='cd {{ params.project_dir }} && /Users/claudia.yuan/PycharmProjects/HeatwaveCalculation/venv/bin/python -c "import os, sys, glob; os.makedirs(\'data\', exist_ok=True); csv_files = glob.glob(\'data/**/*.csv\', recursive=True); print(f\'Found {len(csv_files)} CSV files\'); sys.exit(0)" && /Users/claudia.yuan/PycharmProjects/HeatwaveCalculation/venv/bin/spark-submit main.py --mode heatwaves',
-    params={'project_dir': os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))},
+    bash_command='cd {{ params.project_dir }} && python main.py --mode heatwaves',
+    params={'project_dir': project_root},
     dag=dag,
 )
 
-# Task to run the coldwave calculation
+# Task to run coldwave calculation using local data
 calculate_coldwaves_task = BashOperator(
-    task_id='calculate_coldwaves',
-    bash_command='cd {{ params.project_dir }} && /Users/claudia.yuan/PycharmProjects/HeatwaveCalculation/venv/bin/python -c "import os, sys, glob; os.makedirs(\'data\', exist_ok=True); csv_files = glob.glob(\'data/**/*.csv\', recursive=True); print(f\'Found {len(csv_files)} CSV files\'); sys.exit(0)" && /Users/claudia.yuan/PycharmProjects/HeatwaveCalculation/venv/bin/spark-submit main.py --mode coldwaves',
-    params={'project_dir': os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))},
+    task_id='calculate_coldwaves', 
+    bash_command='cd {{ params.project_dir }} && python main.py --mode coldwaves',
+    params={'project_dir': project_root},
     dag=dag,
 )
 
-# Define the task dependencies
-# download_data_task >> calculate_heatwaves_task
-# download_data_task >> calculate_coldwaves_task
-download_etmaal_data_task >> calculate_heatwaves_task
-download_etmaal_data_task >> calculate_coldwaves_task
+# ============================================================================
+# TASK DEPENDENCIES
+# ============================================================================
+
+# Check data availability first, then run calculations
+check_data_task >> [calculate_heatwaves_task, calculate_coldwaves_task]
+

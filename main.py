@@ -5,20 +5,20 @@ This application calculates heatwaves for The Netherlands based on KNMI's defini
 - A period of at least 5 consecutive days with max temperature ≥ 25°C
 - Within those 5+ days, at least 3 days with max temperature ≥ 30°C
 
-Author: AI Assistant
 """
+
+import glob
+import os
+import sys
+import tarfile
+import tempfile
+import urllib.request
 
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
+from pyspark.sql.types import DoubleType
 from pyspark.sql.window import Window
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType, DateType
-import os
-import sys
-import urllib.request
-import tarfile
-import tempfile
-import glob
-from datetime import datetime
+
 
 def download_and_extract_data(url, extract_to="."):
     """
@@ -43,53 +43,33 @@ def download_and_extract_data(url, extract_to="."):
     os.unlink(temp_file.name)
     return extract_to
 
-def read_nc_file(file_path):
+
+def extract_local_data(file_path, extract_to="."):
     """
-    Read a NetCDF (.nc) file and return its contents as a pandas DataFrame.
+    Extract data from a local file.
 
     Args:
-        file_path (str): Path to the NetCDF file
+        file_path (str): Path to the local file
+        extract_to (str): Directory to extract the data to
 
     Returns:
-        pd.DataFrame: DataFrame containing the data from the NetCDF file
+        str: Path to the extracted data directory
     """
-    try:
-        import xarray as xr
-        import pandas as pd
+    print(f"Extracting local file {file_path} to {extract_to}...")
 
-        # Check if file exists
-        if not os.path.exists(file_path):
-            print(f"File not found: {file_path}")
-            return pd.DataFrame()
+    with tarfile.open(file_path) as tar:
+        tar.extractall(path=extract_to)
 
-        # Check if file is a NetCDF file
-        if not str(file_path).lower().endswith('.nc'):
-            print(f"File is not a NetCDF file: {file_path}")
-            return pd.DataFrame()
+    return extract_to
 
-        # Open the NetCDF file using xarray
-        print(f"Reading NetCDF file: {file_path}")
-        ds = xr.open_dataset(file_path)
-
-        # Display metadata
-        print(f"NetCDF file metadata: {ds}")
-
-        # Convert to pandas DataFrame
-        df = ds.to_dataframe().reset_index()
-
-        # Close the dataset
-        ds.close()
-
-        print(f"Successfully read NetCDF file: {file_path}")
-        return df
-
-    except Exception as e:
-        print(f"Error reading NetCDF file {file_path}: {str(e)}")
-        return pd.DataFrame()
 
 def load_data(spark, data_dir):
     """
-    Load the KNMI weather data from CSV files or NetCDF files.
+    Load the KNMI weather data from data.tgz.
+    First checks if extracted_data path is not empty and uses existing files if found.
+    If empty, checks if data.tgz exists in the root path and reads directly from it if found.
+    If not found, tries to download it from the URL.
+    No NetCDF file checking is performed.
 
     Args:
         spark (SparkSession): The Spark session
@@ -98,131 +78,206 @@ def load_data(spark, data_dir):
     Returns:
         DataFrame: A DataFrame containing the weather data
     """
-    # Check for NetCDF files in airflow/data directory
-    nc_files = glob.glob(os.path.join("airflow", "data", "**/*.nc"), recursive=True)
+    # First check if the extracted_data path already has files
+    all_files = glob.glob(os.path.join(data_dir, "**/*"), recursive=True)
+    if all_files:
+        print(f"Found {len(all_files)} existing files in {data_dir}. Using these files...")
+        return load_text_data(spark, data_dir)
 
-    if nc_files:
-        print(f"Found {len(nc_files)} NetCDF files in airflow/data directory")
+    data_tgz_extracted = False
 
-        # Read all NetCDF files and convert to pandas DataFrames
-        all_dfs = []
-        for nc_file in nc_files:
-            print(f"Processing NetCDF file: {nc_file}")
-            df = read_nc_file(nc_file)
-            if not df.empty:
-                all_dfs.append(df)
-                print(f"Successfully read DataFrame from {nc_file} with shape {df.shape}")
-            else:
-                print(f"Failed to read DataFrame from {nc_file}")
-
-        if not all_dfs:
-            print("Error: no file existed")
-            raise FileNotFoundError("No valid data found in NetCDF files")
-
-        # Combine all DataFrames
-        import pandas as pd
-        combined_df = pd.concat(all_dfs, ignore_index=True)
-
-        # Convert pandas DataFrame to Spark DataFrame
-        spark_df = spark.createDataFrame(combined_df)
-
-        # Add DATE column if it doesn't exist but DTG exists
-        if "DATE" not in spark_df.columns and "DTG" in spark_df.columns:
-            spark_df = spark_df.withColumn("DATE", F.to_date(F.substring("DTG", 1, 8), "yyyyMMdd"))
-            print("Added DATE column based on DTG")
-
-        # Ensure the DataFrame has the required columns
-        required_columns = ["DATE", "TX_DRYB_10", "TN_DRYB_10", "LOCATION"]
-        missing_columns = [col for col in required_columns if col not in spark_df.columns]
-
-        if missing_columns:
-            print("Error: no file existed")
-            raise FileNotFoundError(f"NetCDF data is missing required columns: {missing_columns}")
-
-        return spark_df
+    # If no existing files, check if data.tgz exists in the root path
+    if os.path.exists("data.tgz"):
+        print("Found data.tgz file in root path. Reading directly from it...")
+        try:
+            # Use extract_local_data for local files
+            extract_local_data("data.tgz", data_dir)
+            data_tgz_extracted = True
+        except Exception as e:
+            print(f"Failed to extract data.tgz from root path: {str(e)}")
     else:
-        print("Error: no file existed")
-        raise FileNotFoundError("No NetCDF files found in airflow/data directory")
+        print("No data.tgz file found in root path. Trying to download...")
 
-def load_csv_data(spark, data_dir):
+        # URL for data.tgz (using the same URL as in the Airflow DAG)
+        data_tgz_url = "https://gddassesmentdata.blob.core.windows.net/knmi-data/data.tgz?sp=r&st=2024-01-03T14:42:11Z&se=2025-01-03T22:42:11Z&spr=https&sv=2022-11-02&sr=c&sig=jcOeksvhjJGDTCM%2B2CzrjR3efJI7jq5a3SnT8aiQBc8%3D"
+
+        try:
+            # Download and extract data.tgz to the data directory
+            download_and_extract_data(data_tgz_url, data_dir)
+            data_tgz_extracted = True
+        except Exception as e:
+            print(f"Failed to download data.tgz from URL: {str(e)}")
+
+    # If data.tgz was successfully extracted, we can proceed
+    if data_tgz_extracted:
+        print("Successfully extracted data.tgz")
+
+        # Check if any files were extracted
+        all_files = glob.glob(os.path.join(data_dir, "**/*.*"), recursive=True)
+        if all_files:
+            print(f"Found {len(all_files)} files in the extracted data")
+            # Load the actual data using load_text_data
+            return load_text_data(spark, data_dir)
+        else:
+            print("Warning: No files found in the extracted data")
+            raise FileNotFoundError("Failed to load data: no files found in extracted data")
+    else:
+        # If we couldn't extract data.tgz, raise an error
+        print("Error: Failed to extract data.tgz")
+        raise FileNotFoundError("Failed to load data: could not find or extract data.tgz")
+
+def load_text_data(spark, data_dir):
     """
-    Load the KNMI weather data from CSV files.
+    Load KNMI weather data from space-delimited text files using header positions.
+    Skips files without proper headers and logs warnings.
 
     Args:
         spark (SparkSession): The Spark session
         data_dir (str): Directory containing the data files
 
     Returns:
-        DataFrame: A DataFrame containing the weather data
+        DataFrame: Combined DataFrame containing weather data with DATE column
     """
-    # Define the schema for the data
-    schema = StructType([
-        StructField("DTG", StringType(), True),
-        StructField("LOCATION", StringType(), True),
-        StructField("NAME", StringType(), True),
-        StructField("LATITUDE", DoubleType(), True),
-        StructField("LONGITUDE", DoubleType(), True),
-        StructField("ALTITUDE", DoubleType(), True),
-        StructField("U_BOOL_10", StringType(), True),
-        StructField("T_DRYB_10", DoubleType(), True),
-        StructField("TN_10CM_PAST_6H_10", DoubleType(), True),
-        StructField("T_DEWP_10", DoubleType(), True),
-        StructField("T_DEWP_SEA_10", DoubleType(), True),
-        StructField("T_DRYB_SEA_10", DoubleType(), True),
-        StructField("TN_DRYB_10", DoubleType(), True),
-        StructField("T_WETB_10", DoubleType(), True),
-        StructField("TX_DRYB_10", DoubleType(), True),
-        StructField("U_10", DoubleType(), True),
-        StructField("U_SEA_10", DoubleType(), True)
-    ])
+    # Find all files in the data directory (including files without extensions)
+    all_files = glob.glob(os.path.join(data_dir, "**/*"), recursive=True)
 
-    # Find all CSV files in the data directory
-    csv_files = glob.glob(os.path.join(data_dir, "**/*.csv"), recursive=True)
+    if not all_files:
+        raise FileNotFoundError(f"No files found in {data_dir}")
 
-    if not csv_files:
-        raise FileNotFoundError(f"No CSV files found in {data_dir}")
+    print(f"Found {len(all_files)} files to process")
 
-    print(f"Found {len(csv_files)} CSV files")
+    # Field names in expected order
+    field_names = ["DTG", "LOCATION", "NAME", "LATITUDE", "LONGITUDE", "ALTITUDE", 
+                  "U_BOOL_10", "T_DRYB_10", "TN_10CM_PAST_6H_10", "T_DEWP_10",
+                  "T_DEWP_SEA_10", "T_DRYB_SEA_10", "TN_DRYB_10", "T_WETB_10", 
+                  "TX_DRYB_10", "U_10", "U_SEA_10"]
 
-    # Load all CSV files into a single DataFrame
-    df = spark.read.csv(csv_files, header=True, schema=schema, sep=",")
+    valid_dataframes = []
 
-    # Convert date string to date type
-    df = df.withColumn("DATE", F.to_date(F.substring("DTG", 1, 8), "yyyyMMdd"))
+    # Process each file individually to check for headers
+    for file_path in all_files:
+        try:
+            df = spark.read.option("multiline", "true").option("wholetext", "true").text(file_path)
+            
+            # Extract header line
+            header_df = df.select(F.split(F.col("value"), "\n").alias("lines")) \
+                .select(F.explode(F.col("lines")).alias("line")) \
+                .filter(F.col("line").startswith("#")) \
+                .filter(F.col("line").contains("DTG")) \
+                .limit(1)
+            
+            header_line = header_df.collect()[0]["line"] if header_df.count() > 0 else None
+            
+            if not header_line:
+                print(f"Warning: Skipping file {file_path} - no valid header found")
+                continue
 
-    return df
+            # Parse field positions from header
+            # DTG starts at position 0 (same as #), other fields start where they appear
+            field_positions = []
+            for i, field_name in enumerate(field_names):
+                if field_name == "DTG":
+                    # DTG starts at the same position as the # character
+                    field_positions.append(0)
+                else:
+                    pos = header_line.find(field_name)
+                    field_positions.append(pos if pos >= 0 else len(header_line))
+            field_positions.append(len(header_line))
+
+            # Extract data lines
+            lines_df = df.select(F.split(F.col("value"), "\n").alias("lines")) \
+                .select(F.explode(F.col("lines")).alias("line")) \
+                .filter(~F.col("line").startswith("#")) \
+                .filter(F.length(F.trim(F.col("line"))) > 0)
+
+            # Parse using fixed-width positions
+            parsed_df = lines_df.select(
+                *[F.trim(F.substring(F.col("line"), pos + 1, 
+                                    field_positions[i+1] - pos)
+                        ).alias(field_names[i]) 
+                  for i, pos in enumerate(field_positions[:-1])]
+            )
+
+            # Convert to proper types and handle nulls
+            structured_df = parsed_df.select(
+                F.when(F.length(F.trim(F.col("DTG"))) == 0, F.lit(None)).otherwise(F.col("DTG")).alias("DTG"),
+                F.when(F.length(F.trim(F.col("LOCATION"))) == 0, F.lit(None)).otherwise(F.col("LOCATION")).alias("LOCATION"),
+                F.when(F.length(F.trim(F.col("NAME"))) == 0, F.lit(None)).otherwise(F.col("NAME")).alias("NAME"),
+                F.when(F.length(F.trim(F.col("LATITUDE"))) == 0, F.lit(None)).otherwise(F.col("LATITUDE")).cast(DoubleType()).alias("LATITUDE"),
+                F.when(F.length(F.trim(F.col("LONGITUDE"))) == 0, F.lit(None)).otherwise(F.col("LONGITUDE")).cast(DoubleType()).alias("LONGITUDE"),
+                F.when(F.length(F.trim(F.col("ALTITUDE"))) == 0, F.lit(None)).otherwise(F.col("ALTITUDE")).cast(DoubleType()).alias("ALTITUDE"),
+                F.when(F.length(F.trim(F.col("U_BOOL_10"))) == 0, F.lit(None)).otherwise(F.col("U_BOOL_10")).alias("U_BOOL_10"),
+                F.when(F.length(F.trim(F.col("T_DRYB_10"))) == 0, F.lit(None)).otherwise(F.col("T_DRYB_10")).cast(DoubleType()).alias("T_DRYB_10"),
+                F.when(F.length(F.trim(F.col("TN_10CM_PAST_6H_10"))) == 0, F.lit(None)).otherwise(F.col("TN_10CM_PAST_6H_10")).cast(DoubleType()).alias("TN_10CM_PAST_6H_10"),
+                F.when(F.length(F.trim(F.col("T_DEWP_10"))) == 0, F.lit(None)).otherwise(F.col("T_DEWP_10")).cast(DoubleType()).alias("T_DEWP_10"),
+                F.when(F.length(F.trim(F.col("T_DEWP_SEA_10"))) == 0, F.lit(None)).otherwise(F.col("T_DEWP_SEA_10")).cast(DoubleType()).alias("T_DEWP_SEA_10"),
+                F.when(F.length(F.trim(F.col("T_DRYB_SEA_10"))) == 0, F.lit(None)).otherwise(F.col("T_DRYB_SEA_10")).cast(DoubleType()).alias("T_DRYB_SEA_10"),
+                F.when(F.length(F.trim(F.col("TN_DRYB_10"))) == 0, F.lit(None)).otherwise(F.col("TN_DRYB_10")).cast(DoubleType()).alias("TN_DRYB_10"),
+                F.when(F.length(F.trim(F.col("T_WETB_10"))) == 0, F.lit(None)).otherwise(F.col("T_WETB_10")).cast(DoubleType()).alias("T_WETB_10"),
+                F.when(F.length(F.trim(F.col("TX_DRYB_10"))) == 0, F.lit(None)).otherwise(F.col("TX_DRYB_10")).cast(DoubleType()).alias("TX_DRYB_10"),
+                F.when(F.length(F.trim(F.col("U_10"))) == 0, F.lit(None)).otherwise(F.col("U_10")).cast(DoubleType()).alias("U_10"),
+                F.when(F.length(F.trim(F.col("U_SEA_10"))) == 0, F.lit(None)).otherwise(F.col("U_SEA_10")).cast(DoubleType()).alias("U_SEA_10")
+            ).filter(F.col("DTG").isNotNull() & F.col("LOCATION").isNotNull())
+
+            # Add DATE column - DTG contains timestamps like '2019-11-01 00:10:00'
+            df_with_date = structured_df.withColumn("DATE", F.to_date(F.col("DTG"), "yyyy-MM-dd HH:mm:ss"))
+            valid_dataframes.append(df_with_date)
+
+        except Exception as e:
+            print(f"Warning: Error processing file {file_path}: {str(e)}")
+            continue
+
+    if not valid_dataframes:
+        raise RuntimeError("No valid files with headers found")
+
+    # Union all valid dataframes
+    result_df = valid_dataframes[0]
+    for df in valid_dataframes[1:]:
+        result_df = result_df.union(df)
+
+    return result_df
 
 def filter_de_bilt_data(df, include_min_temp=False):
     """
-    Filter the data for the De Bilt weather station.
+    Filter the data for the De Bilt weather station and aggregate by date.
+    Since DTG is timestamp, we aggregate to get daily max and min temperatures.
 
     Args:
         df (DataFrame): The input DataFrame
         include_min_temp (bool): Whether to include the minimum temperature column (for coldwave calculation)
 
     Returns:
-        DataFrame: A DataFrame containing only data for De Bilt
+        DataFrame: A DataFrame containing daily aggregated data for De Bilt
     """
     # Filter for De Bilt weather station (LOCATION = 260_T_a)
     de_bilt_df = df.filter(df.LOCATION == "260_T_a")
 
-    # Select the columns we need
+    # Filter out rows with null temperature values first
     if include_min_temp:
-        de_bilt_df = de_bilt_df.select("DATE", "TX_DRYB_10", "TN_DRYB_10")
-        # Filter out rows with null values in either column
         de_bilt_df = de_bilt_df.filter(
             de_bilt_df.TX_DRYB_10.isNotNull() & 
             de_bilt_df.TN_DRYB_10.isNotNull()
         )
     else:
-        de_bilt_df = de_bilt_df.select("DATE", "TX_DRYB_10")
-        # Filter out rows with null values
         de_bilt_df = de_bilt_df.filter(de_bilt_df.TX_DRYB_10.isNotNull())
 
     # Filter for data from 2003 onwards
     de_bilt_df = de_bilt_df.filter(F.year(de_bilt_df.DATE) >= 2003)
 
-    return de_bilt_df
+    # Aggregate by date to get daily max and min temperatures
+    if include_min_temp:
+        # For coldwaves: get both daily max and min temperatures
+        daily_df = de_bilt_df.groupBy("DATE").agg(
+            F.max("TX_DRYB_10").alias("TX_DRYB_10"),  # Daily maximum temperature
+            F.min("TN_DRYB_10").alias("TN_DRYB_10")   # Daily minimum temperature
+        )
+    else:
+        # For heatwaves: only need daily max temperature
+        daily_df = de_bilt_df.groupBy("DATE").agg(
+            F.max("TX_DRYB_10").alias("TX_DRYB_10")   # Daily maximum temperature
+        )
+
+    return daily_df
 
 def calculate_heatwaves(df):
     """
@@ -238,22 +293,32 @@ def calculate_heatwaves(df):
     Returns:
         DataFrame: A DataFrame containing the heatwave periods
     """
+    # First, ensure data is sorted by date
+    df = df.orderBy("DATE")
+    
     # Create a column indicating if the day is hot (≥ 25°C)
     df = df.withColumn("is_hot", F.when(df.TX_DRYB_10 >= 25.0, 1).otherwise(0))
 
     # Create a column indicating if the day is tropical (≥ 30°C)
     df = df.withColumn("is_tropical", F.when(df.TX_DRYB_10 >= 30.0, 1).otherwise(0))
 
-    # Create a window specification for consecutive days analysis
-    window_spec = Window.partitionBy(F.year("DATE")).orderBy("DATE")
+    # Create a window specification for consecutive days analysis (no partitioning by year)
+    window_spec = Window.orderBy("DATE")
 
-    # Identify groups of consecutive hot days
-    df = df.withColumn("hot_day_change", 
-                      F.when(F.lag("is_hot", 1).over(window_spec) != df.is_hot, 1)
-                       .otherwise(0))
-
-    # Create a group ID for each sequence of consecutive hot days
-    df = df.withColumn("hot_group_id", F.sum("hot_day_change").over(window_spec))
+    # Identify groups of consecutive hot days using a different approach
+    # Create a group identifier that changes when is_hot changes
+    df = df.withColumn("prev_is_hot", F.lag("is_hot", 1).over(window_spec))
+    df = df.withColumn("group_change", 
+                      F.when((F.col("prev_is_hot") != F.col("is_hot")) | 
+                            F.col("prev_is_hot").isNull(), 1).otherwise(0))
+    
+    # Create cumulative sum to get unique group IDs
+    df = df.withColumn("group_id", F.sum("group_change").over(window_spec))
+    
+    # Create a unique hot group ID by combining group_id with is_hot
+    df = df.withColumn("hot_group_id", 
+                      F.when(F.col("is_hot") == 1, 
+                            F.concat(F.col("group_id"), F.lit("_hot"))).otherwise(None))
 
     # Filter for hot days only (is_hot = 1)
     hot_days_df = df.filter(df.is_hot == 1)
@@ -305,22 +370,31 @@ def calculate_coldwaves(df):
     Returns:
         DataFrame: A DataFrame containing the coldwave periods
     """
+    # First, ensure data is sorted by date
+    df = df.orderBy("DATE")
+    
     # Create a column indicating if the day is cold (max temp < 0°C)
     df = df.withColumn("is_cold", F.when(df.TX_DRYB_10 < 0.0, 1).otherwise(0))
 
     # Create a column indicating if the day has high frost (min temp < -10°C)
     df = df.withColumn("is_high_frost", F.when(df.TN_DRYB_10 < -10.0, 1).otherwise(0))
 
-    # Create a window specification for consecutive days analysis
-    window_spec = Window.partitionBy(F.year("DATE")).orderBy("DATE")
+    # Create a window specification for consecutive days analysis (no partitioning by year)
+    window_spec = Window.orderBy("DATE")
 
-    # Identify groups of consecutive cold days
-    df = df.withColumn("cold_day_change", 
-                      F.when(F.lag("is_cold", 1).over(window_spec) != df.is_cold, 1)
-                       .otherwise(0))
-
-    # Create a group ID for each sequence of consecutive cold days
-    df = df.withColumn("cold_group_id", F.sum("cold_day_change").over(window_spec))
+    # Identify groups of consecutive cold days using the same approach as heatwaves
+    df = df.withColumn("prev_is_cold", F.lag("is_cold", 1).over(window_spec))
+    df = df.withColumn("group_change", 
+                      F.when((F.col("prev_is_cold") != F.col("is_cold")) | 
+                            F.col("prev_is_cold").isNull(), 1).otherwise(0))
+    
+    # Create cumulative sum to get unique group IDs
+    df = df.withColumn("group_id", F.sum("group_change").over(window_spec))
+    
+    # Create a unique cold group ID by combining group_id with is_cold
+    df = df.withColumn("cold_group_id", 
+                      F.when(F.col("is_cold") == 1, 
+                            F.concat(F.col("group_id"), F.lit("_cold"))).otherwise(None))
 
     # Filter for cold days only (is_cold = 1)
     cold_days_df = df.filter(df.is_cold == 1)
@@ -383,7 +457,7 @@ def main():
         print(f"Starting Weather Extremes Calculation Application (Mode: {args.mode})")
 
         # Download and extract data if it doesn't exist or is empty
-        data_dir = "airflow/data"
+        data_dir = "airflow/extracted_data"
 
         # Load the data
         print("Loading data...")

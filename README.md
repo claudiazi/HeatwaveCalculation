@@ -16,7 +16,7 @@ A coldwave is defined as:
 
 ## Requirements
 
-- Python 3.7+
+- Python 3.11
 - Apache Spark 3.0+
 - pandas
 
