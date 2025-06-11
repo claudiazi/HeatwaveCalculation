@@ -126,9 +126,9 @@ curl http://localhost:5000/api/summary
 
 ## Output
 
-The application produces two CSV files:
-- `heatwaves.csv`: Contains information about heatwaves
-- `coldwaves.csv`: Contains information about coldwaves
+The application produces two CSV files in the `results` directory:
+- `results/heatwaves.csv`: Contains information about heatwaves
+- `results/coldwaves.csv`: Contains information about coldwaves
 
 Each file includes the following columns:
 - From date: Start date of the extreme weather period

@@ -11,6 +11,7 @@ Version: 2.0
 
 import argparse
 import logging
+import os
 import sys
 
 from pyspark.sql import SparkSession
@@ -94,9 +95,10 @@ class WeatherExtremeCalculator:
         )
 
         # Export to CSV
+        os.makedirs("results", exist_ok=True)
         self.results_exporter.export_to_csv(
             heatwaves_df,
-            "heatwaves.csv",
+            os.path.join("results", "heatwaves.csv"),
             self.heatwave_columns
         )
 
@@ -120,9 +122,10 @@ class WeatherExtremeCalculator:
         )
 
         # Export to CSV
+        os.makedirs("results", exist_ok=True)
         self.results_exporter.export_to_csv(
             coldwaves_df,
-            "coldwaves.csv",
+            os.path.join("results", "coldwaves.csv"),
             self.coldwave_columns
         )
 

@@ -13,9 +13,9 @@ import json
 app = Flask(__name__)
 
 # Configuration
-DATA_DIR = "data"
-HEATWAVES_CSV = "heatwaves.csv"
-COLDWAVES_CSV = "coldwaves.csv"
+RESULTS_DIR = "results"
+HEATWAVES_CSV = os.path.join(RESULTS_DIR, "heatwaves.csv")
+COLDWAVES_CSV = os.path.join(RESULTS_DIR, "coldwaves.csv")
 
 def ensure_data_exists():
     """
@@ -29,19 +29,19 @@ def ensure_data_exists():
 def get_heatwaves():
     """
     Get all heatwaves or filter by year.
-    
+
     Query parameters:
     - year: Filter heatwaves by year
     """
     ensure_data_exists()
-    
+
     # Load heatwaves data
     if os.path.exists(HEATWAVES_CSV):
         df = pd.read_csv(HEATWAVES_CSV)
-        
+
         # Convert to datetime for filtering
         df['From date'] = pd.to_datetime(df['From date'], format='%d %b %Y')
-        
+
         # Filter by year if specified
         year = request.args.get('year')
         if year:
@@ -50,11 +50,11 @@ def get_heatwaves():
                 df = df[df['From date'].dt.year == year]
             except ValueError:
                 return jsonify({"error": f"Invalid year: {year}"}), 400
-        
+
         # Convert back to string format for JSON
         df['From date'] = df['From date'].dt.strftime('%d %b %Y')
         df['To date (inc.)'] = pd.to_datetime(df['To date (inc.)']).dt.strftime('%d %b %Y')
-        
+
         # Convert to list of dictionaries for JSON response
         heatwaves = df.to_dict(orient='records')
         return jsonify(heatwaves)
@@ -65,19 +65,19 @@ def get_heatwaves():
 def get_coldwaves():
     """
     Get all coldwaves or filter by year.
-    
+
     Query parameters:
     - year: Filter coldwaves by year
     """
     ensure_data_exists()
-    
+
     # Load coldwaves data
     if os.path.exists(COLDWAVES_CSV):
         df = pd.read_csv(COLDWAVES_CSV)
-        
+
         # Convert to datetime for filtering
         df['From date'] = pd.to_datetime(df['From date'], format='%d %b %Y')
-        
+
         # Filter by year if specified
         year = request.args.get('year')
         if year:
@@ -86,11 +86,11 @@ def get_coldwaves():
                 df = df[df['From date'].dt.year == year]
             except ValueError:
                 return jsonify({"error": f"Invalid year: {year}"}), 400
-        
+
         # Convert back to string format for JSON
         df['From date'] = df['From date'].dt.strftime('%d %b %Y')
         df['To date (inc.)'] = pd.to_datetime(df['To date (inc.)']).dt.strftime('%d %b %Y')
-        
+
         # Convert to list of dictionaries for JSON response
         coldwaves = df.to_dict(orient='records')
         return jsonify(coldwaves)
@@ -103,41 +103,41 @@ def get_summary():
     Get a summary of heatwaves and coldwaves by year.
     """
     ensure_data_exists()
-    
+
     summary = {"heatwaves": {}, "coldwaves": {}}
-    
+
     # Process heatwaves
     if os.path.exists(HEATWAVES_CSV):
         df = pd.read_csv(HEATWAVES_CSV)
         df['From date'] = pd.to_datetime(df['From date'], format='%d %b %Y')
         df['year'] = df['From date'].dt.year
-        
+
         # Group by year and count
         yearly_counts = df.groupby('year').size().to_dict()
         yearly_max_temp = df.groupby('year')['Max temperature'].max().to_dict()
-        
+
         for year in yearly_counts:
             summary["heatwaves"][str(year)] = {
                 "count": yearly_counts[year],
                 "max_temperature": yearly_max_temp[year]
             }
-    
+
     # Process coldwaves
     if os.path.exists(COLDWAVES_CSV):
         df = pd.read_csv(COLDWAVES_CSV)
         df['From date'] = pd.to_datetime(df['From date'], format='%d %b %Y')
         df['year'] = df['From date'].dt.year
-        
+
         # Group by year and count
         yearly_counts = df.groupby('year').size().to_dict()
         yearly_min_temp = df.groupby('year')['Min temperature'].min().to_dict()
-        
+
         for year in yearly_counts:
             summary["coldwaves"][str(year)] = {
                 "count": yearly_counts[year],
                 "min_temperature": yearly_min_temp[year]
             }
-    
+
     return jsonify(summary)
 
 @app.route('/', methods=['GET'])
