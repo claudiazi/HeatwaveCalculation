@@ -7,7 +7,7 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ./data:/app/data
+      - ./extracted_data:/app/extracted_data
       - ./:/app/output
     command: ["--mode", "both"]
     environment:

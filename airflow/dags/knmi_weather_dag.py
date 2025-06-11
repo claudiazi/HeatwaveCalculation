@@ -46,7 +46,7 @@ dag = DAG(
 
 # Define directories
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-extracted_data_dir = os.path.join(project_root, 'airflow', 'extracted_data')
+extracted_data_dir = os.path.join(project_root, 'extracted_data')
 
 def download_knmi_data(**kwargs):
     """

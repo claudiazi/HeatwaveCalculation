@@ -460,7 +460,7 @@ def main():
         print(f"Starting Weather Extremes Calculation Application (Mode: {args.mode})")
 
         # Download and extract data if it doesn't exist or is empty
-        data_dir = "airflow/extracted_data"
+        data_dir = "extracted_data"
 
         # Load the data
         print("Loading data...")
