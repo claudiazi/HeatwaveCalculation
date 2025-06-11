@@ -157,9 +157,11 @@ The application is designed to be horizontally scalable and can be extended to p
 
 The application includes an Apache Airflow DAG for automated data processing. This DAG:
 
-1. Downloads the latest data from the KNMI API
-2. Runs the heatwave and coldwave calculations
+1. Checks if the required weather data is available in the extracted_data directory
+2. Runs the heatwave and coldwave calculations using local data
 3. Is scheduled to run only once to process the weather data
+
+Note: The DAG doesn't download the latest data from the KNMI API because we couldn't find the matching endpoint from the API. That's why we skipped the download latest data from API functionality and instead process local data from the extracted_data directory.
 
 ### Setting up Airflow
 
@@ -214,52 +216,19 @@ To stop the Airflow containers:
 ```
 docker-compose -f docker-compose-airflow.yml down
 ```
+However, it is not working as expected yet. The docker-compose-airflow.yml file is not fully functional and requires further development to ensure proper integration with the application.
 
-#### Option 3: Manual Setup
-
-If you prefer to set up Airflow manually:
-
-1. Install Airflow and its dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-2. Initialize the Airflow database:
-   ```
-   airflow db init
-   ```
-
-3. Create an Airflow user (if running for the first time):
-   ```
-   airflow users create \
-     --username admin \
-     --firstname Admin \
-     --lastname User \
-     --role Admin \
-     --email admin@example.com \
-     --password admin
-   ```
-
-4. Start the Airflow webserver:
-   ```
-   airflow webserver --port 8080
-   ```
-
-5. In a separate terminal, start the Airflow scheduler:
-   ```
-   airflow scheduler
-   ```
-
-6. Access the Airflow web UI at http://localhost:8080 and log in with the credentials you created.
 
 ### Using the Airflow DAG
 
 The DAG is located in the `dags` directory and is named `knmi_weather_dag.py`. It includes the following tasks:
 
-1. `download_knmi_data`: Downloads the latest data from the KNMI API
-2. `calculate_heatwaves`: Runs the heatwave calculation
-3. `calculate_coldwaves`: Runs the coldwave calculation
+1. `check_data_availability`: Checks if the required weather data is available in the extracted_data directory
+2. `calculate_heatwaves`: Runs the heatwave calculation using local data
+3. `calculate_coldwaves`: Runs the coldwave calculation using local data
 
-The DAG is scheduled to run only once, but you can also trigger it manually from the Airflow web UI.
+The workflow first checks data availability, and then runs both calculation tasks in parallel if data is available.
 
-To customize the DAG, you can edit the `dags/knmi_weather_dag.py` file. For example, you can change the schedule interval or add additional tasks.
+The DAG (named 'knmi_weather_processing') is configured to run only once, but you can also trigger it manually from the Airflow web UI.
+
+To customize the DAG, you can edit the `dags/knmi_weather_dag.py` file. For example, you can change the schedule interval or add additional tasks. The file also contains API functions for reference, but these are not used in the actual tasks as the DAG processes local data from the extracted_data directory.
