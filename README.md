@@ -159,7 +159,7 @@ The application includes an Apache Airflow DAG for automated data processing. Th
 
 1. Downloads the latest data from the KNMI API
 2. Runs the heatwave and coldwave calculations
-3. Is scheduled to run daily to ensure the latest weather data is processed
+3. Is scheduled to run only once to process the weather data
 
 ### Setting up Airflow
 
@@ -206,7 +206,7 @@ For a containerized Airflow setup:
    ```
    docker-compose -f docker-compose-airflow.yml up -d
    ```
-3. Access the Airflow web UI at http://localhost:8080 and log in with:
+3. Access the Airflow API at http://localhost:8080 and use the following credentials for authentication:
    - Username: admin
    - Password: admin
 
@@ -260,6 +260,6 @@ The DAG is located in the `dags` directory and is named `knmi_weather_dag.py`. I
 2. `calculate_heatwaves`: Runs the heatwave calculation
 3. `calculate_coldwaves`: Runs the coldwave calculation
 
-The DAG is scheduled to run daily, but you can also trigger it manually from the Airflow web UI.
+The DAG is scheduled to run only once, but you can also trigger it manually from the Airflow web UI.
 
 To customize the DAG, you can edit the `dags/knmi_weather_dag.py` file. For example, you can change the schedule interval or add additional tasks.
