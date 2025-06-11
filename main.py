@@ -449,6 +449,9 @@ def main():
         # Initialize Spark session
         spark = SparkSession.builder \
             .appName("Weather Extremes Calculation") \
+            .config("spark.driver.host", "127.0.0.1") \
+            .config("spark.sql.adaptive.enabled", "false") \
+            .master("local[*]") \
             .getOrCreate()
 
         # Set log level to reduce verbosity

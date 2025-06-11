@@ -59,10 +59,6 @@ A coldwave is defined as:
    pip install -r requirements.txt
    ```
 
-   Alternatively, you can install the packages individually:
-   ```
-   pip install pyspark pandas flask
-   ```
 3. Run the application:
    ```
    spark-submit main.py
