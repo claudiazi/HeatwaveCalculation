@@ -2,7 +2,7 @@ version: '3'
 
 x-airflow-common:
   &airflow-common
-  image: apache/airflow:2.5.0
+  image: apache/airflow:3.0.1
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -19,6 +19,8 @@ x-airflow-common:
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
     - ./:/opt/airflow/project
+    - ./src:/opt/airflow/project/src
+    - ./extracted_data:/opt/airflow/project/extracted_data
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on

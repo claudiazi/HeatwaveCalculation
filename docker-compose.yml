@@ -23,12 +23,11 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - ./:/app
+      - ./:/app/output
+      - ./extracted_data:/app/extracted_data
     depends_on:
       - calculator
     environment:
-      - FLASK_APP=api.py
-      - FLASK_ENV=development
       - PYTHONUNBUFFERED=1
     networks:
       - weather-network

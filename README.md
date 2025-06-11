@@ -190,7 +190,7 @@ We provide a convenient setup script that automates the entire Airflow setup pro
    # Check Airflow status
    ./start_airflow.sh status
 
-   # Stop Airflow
+   # Stop Airflow (this is the proper way to shut down all Airflow processes)
    ./start_airflow.sh stop
 
    # Restart Airflow
@@ -213,6 +213,11 @@ For a containerized Airflow setup:
 To stop the Airflow containers:
 ```
 docker-compose -f docker-compose-airflow.yml down
+```
+
+**Note**: If you're still able to access the Airflow UI after running the above command, it's likely that Airflow is running locally on your machine (not in Docker containers). In this case, use the following command to stop all local Airflow processes:
+```
+./start_airflow.sh stop
 ```
 
 #### Option 3: Manual Setup

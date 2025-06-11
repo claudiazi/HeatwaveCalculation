@@ -13,7 +13,12 @@ RUN apt-get update && apt-get install -y \
 # Install Python packages
 RUN pip install pyspark==3.4.0 pandas
 
+# Copy requirements and install dependencies
+COPY requirements.txt /app/
+RUN pip install -r requirements.txt
+
 # Copy the application code
+COPY src/ /app/src/
 COPY main.py /app/
 
 # Set environment variables
