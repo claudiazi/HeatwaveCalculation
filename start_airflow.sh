@@ -35,7 +35,7 @@ clear_python_cache() {
 update_airflow_config() {
     echo -e "${YELLOW}Updating Airflow configuration...${NC}"
     # Set min_file_process_interval to 1 second to detect DAG changes more quickly
-    sed -i.bak 's/^min_file_process_interval = .*/min_file_process_interval = 1/' airflow/airflow.cfg
+    sed -i.bak 's/^min_file_process_interval = .*/min_file_process_interval = 1/' airflow/config/airflow.cfg
     echo -e "${GREEN}Airflow configuration updated.${NC}"
 }
 
