@@ -320,6 +320,7 @@ class DataProcessor:
     DE_BILT_STATION_CODE = "260_T_a"
     START_YEAR = 2003
 
+
     @staticmethod
     def filter_de_bilt_data(df: DataFrame, include_min_temp: bool = False) -> DataFrame:
         """Filter data for De Bilt weather station and aggregate by date.
@@ -358,3 +359,81 @@ class DataProcessor:
             )
 
         return daily_df
+
+    @staticmethod
+    def generate_data_quality_report(df: DataFrame) -> None:
+        """Generate and print a report on the quality of data fields used in analysis.
+
+        Args:
+            df: The input DataFrame
+        """
+        # Get total record count
+        total_count = df.count()
+
+        # Filter for De Bilt station records only
+        de_bilt_df = df.filter(df.LOCATION == DataProcessor.DE_BILT_STATION_CODE)
+        de_bilt_count = de_bilt_df.count()
+
+        # Fields to analyze
+        fields = ["LOCATION", "TX_DRYB_10", "TN_DRYB_10", "DATE"]
+
+        # Create rows for the report
+        report_rows = []
+
+        # Add total record count
+        report_rows.append(("Total Records", total_count, None, None, None))
+
+        # Add De Bilt station count
+        report_rows.append(("De Bilt Station Records", de_bilt_count,
+                           f"{de_bilt_count/total_count*100:.2f}%" if total_count > 0 else "0%",
+                           None, None))
+
+        # Add null counts and statistics for each field
+        for field in fields:
+            # Count nulls in De Bilt data only
+            null_count = de_bilt_df.filter(F.col(field).isNull()).count()
+            null_percentage = f"{null_count/de_bilt_count*100:.2f}%" if de_bilt_count > 0 else "0%"
+
+            # For numeric fields, calculate statistics on De Bilt data only
+            if field in ["TX_DRYB_10", "TN_DRYB_10"]:
+                stats = de_bilt_df.select(
+                    F.min(field).alias("min"),
+                    F.max(field).alias("max"),
+                    F.avg(field).alias("avg")
+                ).collect()[0]
+
+                report_rows.append((
+                    f"{field} - Null Values",
+                    null_count,
+                    null_percentage,
+                    None,
+                    None
+                ))
+
+                report_rows.append((
+                    f"{field} - Statistics",
+                    None,
+                    None,
+                    f"Min: {stats['min']:.2f}, Max: {stats['max']:.2f}",
+                    f"Avg: {stats['avg']:.2f}"
+                ))
+            else:
+                report_rows.append((
+                    f"{field} - Null Values",
+                    null_count,
+                    null_percentage,
+                    None,
+                    None
+                ))
+
+        # Print the report directly
+        print("Data Quality Report:")
+        print("-" * 100)
+        print(f"{'Metric':<30} {'Count':<15} {'Percentage':<15} {'Range':<20} {'Average':<15}")
+        print("-" * 100)
+
+        for row in report_rows:
+            metric, count, percentage, range_val, average = row
+            print(f"{metric:<30} {str(count) if count is not None else '':<15} {str(percentage) if percentage is not None else '':<15} {str(range_val) if range_val is not None else '':<20} {str(average) if average is not None else '':<15}")
+
+        print("-" * 100)

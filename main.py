@@ -129,12 +129,13 @@ class WeatherExtremeCalculator:
             self.coldwave_columns
         )
 
-    def run(self, mode: str, data_dir: str = "extracted_data") -> None:
+    def run(self, mode: str, data_dir: str = "extracted_data", check_data_quality: bool = False) -> None:
         """Run the weather extremes calculation.
 
         Args:
             mode: Calculation mode ('heatwaves', 'coldwaves', or 'both')
             data_dir: Directory containing the weather data
+            check_data_quality: Whether to generate a data quality report (default: False)
         """
         try:
             logger.info(f"Starting Weather Extremes Calculation (Mode: {mode})")
@@ -146,6 +147,11 @@ class WeatherExtremeCalculator:
             logger.info("Loading weather data")
             df = self.data_loader.load_data(data_dir)
             logger.info(f"Loaded {df.count()} records")
+
+            # Generate and print data quality report if requested
+            if check_data_quality:
+                logger.info("Generating data quality report")
+                self.data_processor.generate_data_quality_report(df)
 
             # Process based on mode
             if mode in ['heatwaves', 'both']:
@@ -172,9 +178,10 @@ def parse_arguments() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s --mode heatwaves    # Calculate only heatwaves
-  %(prog)s --mode coldwaves    # Calculate only coldwaves
-  %(prog)s --mode both         # Calculate both (default)
+  %(prog)s --mode heatwaves                     # Calculate only heatwaves
+  %(prog)s --mode coldwaves                     # Calculate only coldwaves
+  %(prog)s --mode both                          # Calculate both (default)
+  %(prog)s --mode both --check-data-quality     # Calculate both and generate data quality report
         """
     )
 
@@ -198,6 +205,13 @@ Examples:
         help='Set logging level (default: INFO)'
     )
 
+    parser.add_argument(
+        '--check-data-quality',
+        action='store_true',
+        default=False,
+        help='Generate a data quality report (default: False)'
+    )
+
     return parser.parse_args()
 
 
@@ -212,7 +226,7 @@ def main():
 
         # Initialize and run calculator
         calculator = WeatherExtremeCalculator()
-        calculator.run(args.mode, args.data_dir)
+        calculator.run(args.mode, args.data_dir, args.check_data_quality)
 
     except KeyboardInterrupt:
         logger.info("Application interrupted by user")
