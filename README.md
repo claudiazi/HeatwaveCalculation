@@ -153,6 +153,36 @@ The application is implemented using Apache Spark, a distributed computing frame
 
 The application is designed to be horizontally scalable and can be extended to process other types of meteorological data.
 
+## Repository Structure
+
+The repository is organized as follows:
+
+```
+.
+├── airflow/                    # Airflow configuration and DAGs
+│   ├── dags/                   # Airflow DAG definitions
+│   │   └── knmi_weather_dag.py # DAG for KNMI weather data processing
+│   ├── config/                 # Airflow configuration file
+│   └── ...                    # Other Airflow-related files
+├── extracted_data/            # Extracted and processed data
+├── heatwave_calculator/       # Core application code
+│   ├── data_loader.py         # Data loading functionality
+│   └── weather_analysis.py    # Weather analysis and heatwave/coldwave calculation
+├── results/                   # Output directory for calculation results
+│   ├── heatwaves.csv          # Heatwave calculation results
+│   └── coldwaves.csv          # Coldwave calculation results
+├── tests/                     # To be added
+├── api.py                     # REST API implementation
+├── main.py                    # Main application entry point
+├── Dockerfile                 # Docker configuration for the calculator
+├── Dockerfile.api             # Docker configuration for the API
+├── docker-compose.yml         # Docker Compose configuration
+├── docker-compose-airflow.yml # Docker Compose configuration for Airflow
+├── requirements.txt           # Python dependencies
+├── setup_airflow.sh           # Script for setting up Airflow
+└── start_airflow.sh           # Script for managing Airflow services
+```
+
 ## Airflow Integration
 
 The application includes an Apache Airflow DAG for automated data processing. This DAG:
