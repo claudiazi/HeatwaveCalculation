@@ -126,7 +126,7 @@ class WeatherDataLoader:
         all_files = glob.glob(os.path.join(data_dir, "**/*"), recursive=True)
         data_files = [f for f in all_files if os.path.isfile(f)]
         if data_files:
-            logger.info(f"Found {len(data_files)} existing files in {data_dir}")
+            logger.info(f"Files already exists in {data_dir}, no need to download or extract")
             return self._load_text_data(data_dir)
 
         # Try to extract from local data.tgz
