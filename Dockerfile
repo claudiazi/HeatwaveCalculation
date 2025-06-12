@@ -15,9 +15,11 @@ RUN pip install pyspark==3.4.0 pandas
 
 # Copy the application code
 COPY main.py /app/
+COPY heatwave_calculator /app/heatwave_calculator/
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
 
 # Set the entrypoint
 ENTRYPOINT ["python", "main.py"]
