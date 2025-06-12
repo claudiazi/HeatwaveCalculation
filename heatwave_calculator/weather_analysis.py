@@ -47,31 +47,23 @@ class WeatherAnalyzer:
         Returns:
             DataFrame with period analysis
         """
-        # Ensure data is sorted by date
-        df = df.orderBy("DATE")
+        # Filter for days meeting condition first (performance optimization)
+        condition_df = df.filter(F.col(condition_col) == 1)
 
-        # Create window specification
-        window_spec = Window.orderBy("DATE")
+        # Ensure data is sorted by date and persist for performance
+        condition_df = condition_df.orderBy("DATE")
+        condition_df = condition_df.persist()
 
-        # Identify groups of consecutive days meeting condition
-        df = df.withColumn(f"prev_{condition_col}", F.lag(condition_col, 1).over(window_spec))
-        df = df.withColumn("group_change",
-                           F.when((F.col(f"prev_{condition_col}") != F.col(condition_col)) |
-                                  F.col(f"prev_{condition_col}").isNull(), 1).otherwise(0))
+        # Use row number trick for grouping (performance optimization)
+        window = Window.orderBy("DATE")
+        condition_df = condition_df.withColumn("row_num", F.row_number().over(window))
+        condition_df = condition_df.withColumn("date_diff", F.datediff("DATE", F.lit("1970-01-01")))
 
-        # Create cumulative sum to get unique group IDs
-        df = df.withColumn("group_id", F.sum("group_change").over(window_spec))
+        # Grouping logic: consecutive if date_diff - row_num is constant
+        condition_df = condition_df.withColumn("group_id", F.expr("date_diff - row_num"))
 
-        # Create unique period group ID
-        df = df.withColumn(f"{period_prefix}_group_id",
-                           F.when(F.col(condition_col) == 1,
-                                  F.concat(F.col("group_id"), F.lit(f"_{period_prefix}"))).otherwise(None))
-
-        # Filter for days meeting condition
-        period_days_df = df.filter(F.col(condition_col) == 1)
-
-        # Group by period_group_id to analyze each potential period
-        grouped_df = period_days_df.groupBy(f"{period_prefix}_group_id").agg(
+        # Group by group_id to analyze each potential period
+        grouped_df = condition_df.groupBy("group_id").agg(
             F.min("DATE").alias("start_date"),
             F.max("DATE").alias("end_date"),
             F.count("DATE").alias("duration"),
@@ -149,6 +141,7 @@ class HeatwaveAnalyzer(WeatherAnalyzer):
                            F.when(df.TX_DRYB_10 >= self.criteria.temp_threshold, 1).otherwise(0))
         df = df.withColumn("is_tropical",
                            F.when(df.TX_DRYB_10 >= self.criteria.extreme_temp_threshold, 1).otherwise(0))
+
 
         # Identify consecutive hot periods
         grouped_df = self._identify_consecutive_periods(df, "is_hot", "is_tropical", "hot")
