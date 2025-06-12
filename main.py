@@ -64,8 +64,6 @@ class WeatherExtremeCalculator:
             .appName("Weather Extremes Calculation") \
             .config("spark.driver.host", "127.0.0.1") \
             .config("spark.sql.adaptive.enabled", "false") \
-            .config("spark.driver.memory", "4g") \
-            .config("spark.executor.memory", "32g") \
             .master("local[*]") \
             .getOrCreate()
 
