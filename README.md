@@ -115,13 +115,13 @@ The API will be available at http://localhost:5000 and provides the following en
 Example usage:
 ```
 # Get all heatwaves
-curl http://localhost:5000/api/heatwaves
+curl "http://localhost:5000/api/heatwaves"
 
 # Get heatwaves for 2003
-curl http://localhost:5000/api/heatwaves?year=2003
+curl "http://localhost:5000/api/heatwaves?year=2003"
 
 # Get a summary of heatwaves and coldwaves by year
-curl http://localhost:5000/api/summary
+curl "http://localhost:5000/api/summary"
 ```
 
 ## Output
